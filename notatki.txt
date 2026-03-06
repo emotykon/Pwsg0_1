@@ -1,0 +1,121 @@
+app_2048.h
+#pragma once
+#include <windows.h>
+#include <string>
+
+class app_2048 {
+private:
+    HINSTANCE m_instance;
+    HWND m_main;
+    HBRUSH m_bg_brush; // Pêdzel dla t³a okna (30, 50, 90)
+
+    bool register_class();
+    HWND create_window();
+    
+    static std::wstring const s_class_name;
+    static LRESULT CALLBACK window_proc_static(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
+    LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
+
+public:
+    app_2048(HINSTANCE instance);
+    ~app_2048(); 
+    int run(int show_command);
+};
+
+////////////////////////////////////////////
+app_2048.cpp
+
+#include "app_2048.h"
+
+std::wstring const app_2048::s_class_name{ L"app_2048_class" };
+
+app_2048::app_2048(HINSTANCE instance) : m_instance{ instance }, m_main{} {
+    // Tworzymy pêdzel t³a zgodnie ze specyfikacj¹ (30, 50, 90)
+    m_bg_brush = CreateSolidBrush(RGB(30, 50, 90));
+    register_class();
+    m_main = create_window();
+}
+
+app_2048::~app_2048() {
+    if (m_bg_brush) DeleteObject(m_bg_brush);
+}
+
+bool app_2048::register_class() {
+    WNDCLASSEXW desc{ .cbSize = sizeof(WNDCLASSEXW) };
+    if (GetClassInfoExW(m_instance, s_class_name.c_str(), &desc) != 0) return true;
+
+    desc.lpfnWndProc = window_proc_static;
+    desc.hInstance = m_instance;
+    desc.hCursor = LoadCursorW(nullptr, L"IDC_ARROW");
+    desc.hbrBackground = m_bg_brush; // Ustawienie koloru t³a klasy
+    desc.lpszClassName = s_class_name.c_str();
+    
+    return RegisterClassExW(&desc) != 0;
+}
+
+HWND app_2048::create_window() {
+    // Obliczamy rozmiar okna, aby obszar roboczy (Client Area) mia³ dok³adnie 800x600
+    RECT rc = { 0, 0, 800, 600 };
+    // Flagi: brak WS_THICKFRAME i WS_MAXIMIZEBOX blokuje zmianê rozmiaru
+    DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    AdjustWindowRect(&rc, style, FALSE);
+
+    return CreateWindowExW(
+        0, 
+        s_class_name.c_str(), 
+        L"Not WM_PAINT", // Wymagana nazwa okna
+        style | WS_CLIPCHILDREN,
+        CW_USEDEFAULT, CW_USEDEFAULT, 
+        rc.right - rc.left, rc.bottom - rc.top,
+        nullptr, nullptr, m_instance, this);
+}
+
+LRESULT app_2048::window_proc_static(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    app_2048* app = nullptr;
+    if (message == WM_NCCREATE) {
+        auto p = reinterpret_cast<LPCREATESTRUCTW>(lparam);
+        app = static_cast<app_2048*>(p->lpCreateParams);
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
+    } else {
+        app = reinterpret_cast<app_2048*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    }
+    return (app) ? app->window_proc(window, message, wparam, lparam) 
+                 : DefWindowProcW(window, message, wparam, lparam);
+}
+
+LRESULT app_2048::window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    switch (message) {
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcW(window, message, wparam, lparam);
+}
+
+int app_2048::run(int show_command) {
+    ShowWindow(m_main, show_command);
+    MSG msg{};
+    while (GetMessageW(&msg, nullptr, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    return (int)msg.wParam;
+}
+///////////////////////////
+main.cpp
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include "app_2048.h"
+
+int WINAPI wWinMain(HINSTANCE instance,
+    HINSTANCE /*hPrevInstance*/,
+    LPWSTR /*lpCmdLine*/,
+    int show_command)
+{
+    // Tworzy obiekt aplikacji (rejestruje klasê i tworzy okno 800x600)
+    app_2048 app{ instance };
+    
+    // Uruchamia pêtlê komunikatów i zwraca kod wyjœcia
+    return app.run(show_command);
+}
